@@ -126,6 +126,8 @@ func show_post(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleFunc() {
+	port := os.Getenv("PORT")
+	log.Print("Listen on :" + port)
 
 	rtr := mux.NewRouter()
 	rtr.HandleFunc("/", index).Methods("GET")
@@ -138,8 +140,6 @@ func HandleFunc() {
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 
-	port := os.Getenv("PORT")
-	log.Print("Listen on :" + port)
 	//http.ListenAndServe(":8080", nil)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 
