@@ -3,7 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"text/template"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -124,6 +126,7 @@ func show_post(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleFunc() {
+
 	rtr := mux.NewRouter()
 	rtr.HandleFunc("/", index).Methods("GET")
 	rtr.HandleFunc("/create", create).Methods("GET")
@@ -135,7 +138,10 @@ func HandleFunc() {
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 
-	http.ListenAndServe(":8080", nil)
+	port := os.Getenv("PORT")
+	log.Print("Listen on :" + port)
+	//http.ListenAndServe(":8080", nil)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 
 }
 
