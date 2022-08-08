@@ -1,0 +1,19 @@
+{{define "login"}}
+
+{{template "header"}}
+        
+   <main class="px-3">
+            <h1>Авторизация</h1>
+
+            <form action="/check_password" method="post">
+                <input type="text" name="userlogin" placeholder="enter login"
+                 class = "form-control"><br>
+                 <textarea name="userpassword" id="userpassword" class="form-control" placeholder="enter password"></textarea><br>
+                 <button class="btn btn-warning">Avtorizirovatsya</button>
+            </form>
+
+    </main>
+
+    {{template "footer"}}
+          
+{{end}}       
