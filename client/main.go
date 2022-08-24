@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,60 +9,11 @@ import (
 	jwt "github.com/golang-jwt/jwt/v4"
 )
 
-//better to pick this up from env variables
-// set MY_JWT_TOKEN=quakegodmode (has to be set in cli)
 //vqr mySigningKey = os.Get("MY_JWT_TOKEN")
 var mySigningKey = []byte("quakegodmode")
 
-type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-var user = User{
-	Username: "1",
-	Password: "1",
-}
-
-func loginPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	var u User
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	client := &http.Client{}
-	req, _ := http.NewRequest("GET", "http://localhost:8081/create", nil)
-	req.Header.Set("Token", checkLogin(u))
-	res, err := client.Do(req)
-	if err != nil {
-		fmt.Fprint(w, "Errors: %s", err.Error())
-	}
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-
-	fmt.Fprintf(w, string(body))
-
-}
-
-func checkLogin(u User) string {
-	//	fmt.Println("\ncp checl login 1")
-	if user.Username != u.Username || user.Password != u.Password {
-		fmt.Println("user not found")
-		err := "error"
-		return err
-	}
-	validToken, err := GenerateJWT()
-	if err != nil {
-		fmt.Println(err)
-	}
-	return validToken
-}
+//better to pick this up from env variables
+// set MY_JWT_TOKEN=quakegodmode (has to be set in cli)
 
 func GenerateJWT() (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
@@ -77,7 +27,7 @@ func GenerateJWT() (string, error) {
 	tokenString, err := token.SignedString(mySigningKey)
 
 	if err != nil {
-		fmt.Errorf("something wrong in JWT token generation %s", err.Error())
+		fmt.Errorf("something went wrong %s", err.Error())
 		return "", err
 	}
 
@@ -85,15 +35,14 @@ func GenerateJWT() (string, error) {
 
 }
 
-func homePage(w http.ResponseWriter, r *http.Request) {
-
+func index(w http.ResponseWriter, r *http.Request) {
 	validToken, err := GenerateJWT()
 	if err != nil {
 		fmt.Fprintf(w, err.Error())
 	}
 
 	client := &http.Client{}
-	req, _ := http.NewRequest("GET", "http://localhost:8081/stocks", nil)
+	req, _ := http.NewRequest("GET", "http://localhost:8081/", nil)
 	req.Header.Set("Token", validToken)
 	res, err := client.Do(req)
 	if err != nil {
@@ -109,14 +58,131 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func create(w http.ResponseWriter, r *http.Request) {
+	validToken, err := GenerateJWT()
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8081/create", nil)
+	req.Header.Set("Token", validToken)
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Fprint(w, "Errors: %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	fmt.Println("Client create func")
+	fmt.Fprintf(w, string(body))
+
+}
+
+func save_article(w http.ResponseWriter, r *http.Request) {
+	validToken, err := GenerateJWT()
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8081/save_article", nil)
+	req.Header.Set("Token", validToken)
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Fprint(w, "Errors: %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	fmt.Println("Client save article func")
+	fmt.Fprintf(w, string(body))
+
+}
+
+func loginPage(w http.ResponseWriter, r *http.Request) {
+	validToken, err := GenerateJWT()
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8081/loginn", nil)
+	req.Header.Set("Token", validToken)
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Fprint(w, "Errors: %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	fmt.Fprintf(w, string(body))
+
+}
+
+func check_password(w http.ResponseWriter, r *http.Request) {
+	validToken, err := GenerateJWT()
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8081/check_password", nil)
+	req.Header.Set("Token", validToken)
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Fprint(w, "Errors: %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	fmt.Fprintf(w, string(body))
+
+}
+
+func show_post(w http.ResponseWriter, r *http.Request) {
+	validToken, err := GenerateJWT()
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8081/post/{id:[0-9]+}", nil)
+	req.Header.Set("Token", validToken)
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Fprint(w, "Errors: %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	fmt.Fprintf(w, string(body))
+
+}
+
 func HandleRequests() {
-	//http.HandleFunc("/", homePage)
-	http.HandleFunc("/login", loginPage)
+	http.HandleFunc("/", index)
+	http.HandleFunc("/create", create)
+	http.HandleFunc("/save_article", save_article)
+	http.HandleFunc("/loginn", loginPage)
+	http.HandleFunc("/check_password", check_password)
+	http.HandleFunc("/post/{id:[0-9]+}", show_post)
 
 }
 
 func main() {
-	fmt.Println("My Client")
+	fmt.Println("My Client 8080")
 
 	HandleRequests()
 

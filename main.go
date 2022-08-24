@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"text/template"
 	"time"
@@ -29,14 +30,70 @@ type Article struct {
 
 var posts = []Article{}
 var showPost = Article{}
-var mySigningKey = []byte("quakegodmode")
+var mySigningKey = []byte("quakegodmode1")
+
+func checkAuthviaCookie(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		c, err := r.Cookie("token")
+
+		if err != nil {
+			if err == http.ErrNoCookie {
+				// If the cookie is not set, return an unauthorized status
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			// For any other type of error, return a bad request status
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		tknStr := c.Value
+		fmt.Println("token from autkyki", tknStr)
+
+		w.Header().Set("Connection", "close")
+		defer r.Body.Close()
+
+		if c.Value != "" {
+			token, err := jwt.Parse(tknStr, func(token *jwt.Token) (interface{}, error) {
+				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, fmt.Errorf("errror in header token parsing")
+				}
+				fmt.Println("before return of signng lkey")
+				return mySigningKey, nil
+			})
+			fmt.Println("cp7")
+
+			if err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				w.Header().Add("Content-Type", "application/json")
+				fmt.Println(err.Error())
+				return
+
+				//!!! problrem here made it redirect to login page...
+			}
+
+			if token.Valid {
+				endpoint(w, r)
+				fmt.Println("cp9")
+			} else {
+				fmt.Println("token not waid")
+			}
+
+		} else {
+
+			fmt.Fprintf(w, "Not Authorizeddd from kyki")
+
+		}
+	})
+}
 
 func checkAuth(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Connection", "close")
 		defer r.Body.Close()
-
+		//fmt.Println("token kotorij postupil v check auth", r.Header.Get("Token"))
 		if r.Header["Token"] != nil {
 			token, err := jwt.Parse(r.Header["Token"][0], func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -56,7 +113,9 @@ func checkAuth(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
 			}
 
 		} else {
+
 			fmt.Fprintf(w, "Not Authorizeddd")
+
 		}
 	})
 }
@@ -92,7 +151,6 @@ func index(w http.ResponseWriter, r *http.Request) {
 	//не просто execute потому что подключим динаическое отображние шаблонов
 	t.ExecuteTemplate(w, "index", posts)
 	//index- name of block. - {{index}}
-
 }
 
 func create(w http.ResponseWriter, r *http.Request) {
@@ -105,12 +163,14 @@ func create(w http.ResponseWriter, r *http.Request) {
 	//не просто execute потому что подключим динаическое отображние шаблонов
 	t.ExecuteTemplate(w, "create", nil)
 	//index- name of block. - {{index}}
+	fmt.Println("Server create  func")
 }
 
 func save_article(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 	anons := r.FormValue("anons")
 	full_text := r.FormValue("full_text")
+	fmt.Println(title, ": ", anons, " :", full_text)
 	if title == "" || anons == "" || full_text == "" {
 		fmt.Fprintf(w, "not all data filled")
 	} else {
@@ -126,8 +186,10 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		defer insert.Close()
-		http.Redirect(w, r, "/", 301)
+
+		http.Redirect(w, r, "/create", 301)
 	}
+	fmt.Println("Server save article func")
 }
 
 func show_post(w http.ResponseWriter, r *http.Request) {
@@ -160,15 +222,9 @@ func show_post(w http.ResponseWriter, r *http.Request) {
 		//fmt.Println(fmt.Sprintf("Id: %d, title: %s , anons: %s , text: %s", post.id, post.Title, post.Anons, post.FulText))
 		t.ExecuteTemplate(w, "show", showPost)
 	}
-
-	// id := vars["id"]
-	// response := fmt.Sprintf("id= %s", id)
-	// fmt.Fprint(w, response)
 }
 
 func loginPage(w http.ResponseWriter, r *http.Request) {
-
-	//fmt.Fprint(w, "Loginn page")
 
 	t, err := template.ParseFiles("templates/login.html", "templates/header.html", "templates/footer.html")
 
@@ -176,7 +232,6 @@ func loginPage(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, err.Error())
 	}
 	t.ExecuteTemplate(w, "login", nil)
-
 }
 
 func check_password(w http.ResponseWriter, r *http.Request) {
@@ -188,32 +243,39 @@ func check_password(w http.ResponseWriter, r *http.Request) {
 	name_to_check := r.FormValue("userlogin")
 	pass_to_check := r.FormValue("userpassword")
 
-	// if name_to_check == "" || pass_to_check == "" {
-	// 	fmt.Fprintf(w, "not all data in fields pass or login filled")
-	// }
-
 	if dbname == name_to_check && dbpass == pass_to_check {
-		http.Redirect(w, r, "/", 301)
+
+		validToken, err := GenerateJWT()
+		if err != nil {
+			fmt.Fprintf(w, err.Error())
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:  "token",
+			Value: validToken,
+			//Expires:
+
+		})
+		fmt.Printf("cp1")
+		client := &http.Client{}
+		req, _ := http.NewRequest("GET", "http://localhost:8081/", nil)
+		req.Header.Set("Token", validToken)
+		res, err := client.Do(req)
+		if err != nil {
+			fmt.Fprint(w, "Errors: %s", err.Error())
+		}
+		fmt.Printf("cp2")
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			fmt.Fprintf(w, err.Error())
+		}
+
+		fmt.Fprintf(w, string(body))
+
 	} else {
 		fmt.Fprintf(w, "not all data in fields pass or login filled")
 	}
-
-	//http.Redirect(w, r, "/create", 301)
-
-}
-
-func checkLogin(u User) string {
-	//	fmt.Println("\ncp checl login 1")
-	if user.Username != u.Username || user.Password != u.Password {
-		fmt.Println("user not found")
-		err := "error"
-		return err
-	}
-	validToken, err := GenerateJWT()
-	if err != nil {
-		fmt.Println(err)
-	}
-	return validToken
+	fmt.Printf("cp3")
 }
 
 func GenerateJWT() (string, error) {
@@ -223,7 +285,7 @@ func GenerateJWT() (string, error) {
 
 	claims["authorized"] = true
 	claims["user"] = "tosha"
-	claims["exp"] = time.Now().Add(time.Hour * 1).Unix()
+	claims["exp"] = time.Now().Add(time.Minute * 10).Unix()
 
 	tokenString, err := token.SignedString(mySigningKey)
 
@@ -233,20 +295,41 @@ func GenerateJWT() (string, error) {
 	}
 
 	return tokenString, nil
+}
+func Welcome(w http.ResponseWriter, r *http.Request) {
+	// c, err := r.Cookie("token")
+
+	// if err != nil {
+	// 	if err == http.ErrNoCookie {
+	// 		// If the cookie is not set, return an unauthorized status
+	// 		w.WriteHeader(http.StatusUnauthorized)
+	// 		return
+	// 	}
+	// 	// For any other type of error, return a bad request status
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	return
+	// }
+
+	// tknStr := c.Value
+	fmt.Println("secret info from welcome page")
+	//fmt.Println("tokenstring from coockie", tknStr)
 
 }
 
 func HandleFunc() {
-	//port := os.Getenv("PORT")
-	//log.Print("Listen on :" + port)
+	//port := os.Getenv("PORT")  //for remote server
+	//log.Print("Listen on :" + port)  //for remote server
 
 	rtr := mux.NewRouter()
 	rtr.HandleFunc("/", index).Methods("GET")
 	rtr.HandleFunc("/loginn", loginPage)
-	rtr.HandleFunc("/check_password", check_password).Methods("POST")
-	rtr.Handle("/create", checkAuth(create)).Methods("GET")
-	rtr.HandleFunc("/save_article", save_article).Methods("POST")
+	rtr.HandleFunc("/check_password", check_password)
+	//rtr.Handle("/create", checkAuth(create)).Methods("GET")
+	rtr.HandleFunc("/save_article", save_article)
 	rtr.HandleFunc("/post/{id:[0-9]+}", show_post).Methods("GET")
+	rtr.Handle("/welcome", checkAuthviaCookie(Welcome))
+	rtr.HandleFunc("/welcome", Welcome)
+	rtr.Handle("/create", checkAuthviaCookie(create)).Methods("GET")
 
 	//указывем что обработка всх адресов будет через горилла роутер
 	http.Handle("/", rtr)
@@ -254,7 +337,7 @@ func HandleFunc() {
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 
 	http.ListenAndServe(":8081", nil)
-	//log.Fatal(http.ListenAndServe(":"+port, nil))
+	//log.Fatal(http.ListenAndServe(":"+port, nil))   //for remote server
 
 }
 
@@ -262,3 +345,10 @@ func main() {
 	HandleFunc()
 
 }
+
+//sozdat bd users s id imenem i hasged password
+
+//esli token ne valid to create post  - no page found> inly after login is going to work
+//dobavit avtorizaciu with login and pass i hraneniev bd
+// sdelat otdelnij server dlya proverki parolya i logina
+// bd users and passwords // mozgno ispolzovat tu zge samuyu bd tolko otdelnyu tablicy
