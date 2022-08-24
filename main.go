@@ -11,16 +11,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-}
-
-var user = User{
-	Username: "1",
-	Password: "1",
 }
 
 type Article struct {
@@ -30,7 +26,7 @@ type Article struct {
 
 var posts = []Article{}
 var showPost = Article{}
-var mySigningKey = []byte("quakegodmode1")
+var mySigningKey = []byte("quakegodmode")
 
 func checkAuthviaCookie(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +45,6 @@ func checkAuthviaCookie(endpoint func(http.ResponseWriter, *http.Request)) http.
 		}
 
 		tknStr := c.Value
-		fmt.Println("token from autkyki", tknStr)
 
 		w.Header().Set("Connection", "close")
 		defer r.Body.Close()
@@ -59,10 +54,8 @@ func checkAuthviaCookie(endpoint func(http.ResponseWriter, *http.Request)) http.
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, fmt.Errorf("errror in header token parsing")
 				}
-				fmt.Println("before return of signng lkey")
 				return mySigningKey, nil
 			})
-			fmt.Println("cp7")
 
 			if err != nil {
 				w.WriteHeader(http.StatusForbidden)
@@ -75,14 +68,13 @@ func checkAuthviaCookie(endpoint func(http.ResponseWriter, *http.Request)) http.
 
 			if token.Valid {
 				endpoint(w, r)
-				fmt.Println("cp9")
 			} else {
-				fmt.Println("token not waid")
+				fmt.Println("token not valid")
 			}
 
 		} else {
 
-			fmt.Fprintf(w, "Not Authorizeddd from kyki")
+			fmt.Fprintf(w, "Not Authorizeddd from cookie")
 
 		}
 	})
@@ -93,7 +85,6 @@ func checkAuth(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
 
 		w.Header().Set("Connection", "close")
 		defer r.Body.Close()
-		//fmt.Println("token kotorij postupil v check auth", r.Header.Get("Token"))
 		if r.Header["Token"] != nil {
 			token, err := jwt.Parse(r.Header["Token"][0], func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -101,17 +92,14 @@ func checkAuth(endpoint func(http.ResponseWriter, *http.Request)) http.Handler {
 				}
 				return mySigningKey, nil
 			})
-
 			if err != nil {
 				w.WriteHeader(http.StatusForbidden)
 				w.Header().Add("Content-Type", "application/json")
 				return
 			}
-
 			if token.Valid {
 				endpoint(w, r)
 			}
-
 		} else {
 
 			fmt.Fprintf(w, "Not Authorizeddd")
@@ -146,7 +134,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		posts = append(posts, post)
-		//fmt.Println(fmt.Sprintf("Id: %d, title: %s , anons: %s , text: %s", post.id, post.Title, post.Anons, post.FulText))
+
 	}
 	//не просто execute потому что подключим динаическое отображние шаблонов
 	t.ExecuteTemplate(w, "index", posts)
@@ -163,14 +151,12 @@ func create(w http.ResponseWriter, r *http.Request) {
 	//не просто execute потому что подключим динаическое отображние шаблонов
 	t.ExecuteTemplate(w, "create", nil)
 	//index- name of block. - {{index}}
-	fmt.Println("Server create  func")
 }
 
 func save_article(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 	anons := r.FormValue("anons")
 	full_text := r.FormValue("full_text")
-	fmt.Println(title, ": ", anons, " :", full_text)
 	if title == "" || anons == "" || full_text == "" {
 		fmt.Fprintf(w, "not all data filled")
 	} else {
@@ -189,7 +175,6 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 
 		http.Redirect(w, r, "/create", 301)
 	}
-	fmt.Println("Server save article func")
 }
 
 func show_post(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +204,6 @@ func show_post(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		showPost = post
-		//fmt.Println(fmt.Sprintf("Id: %d, title: %s , anons: %s , text: %s", post.id, post.Title, post.Anons, post.FulText))
 		t.ExecuteTemplate(w, "show", showPost)
 	}
 }
@@ -234,17 +218,29 @@ func loginPage(w http.ResponseWriter, r *http.Request) {
 	t.ExecuteTemplate(w, "login", nil)
 }
 
-func check_password(w http.ResponseWriter, r *http.Request) {
-	//to be replaced by db later - hardcodeedfor now
-
-	var dbname string = "1"
-	var dbpass string = "1"
+func check_hashed_password(w http.ResponseWriter, r *http.Request) {
+	var hashed_pass_from_db string
 
 	name_to_check := r.FormValue("userlogin")
 	pass_to_check := r.FormValue("userpassword")
+	db, err := sql.Open("mysql", "root:Super_22@tcp(127.0.0.1:3306)/golangdb")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
 
-	if dbname == name_to_check && dbpass == pass_to_check {
+	res, err := db.Query(fmt.Sprintf("SELECT `password` FROM `users` WHERE `name` = '%s'", name_to_check))
+	if err != nil {
+		panic(err)
+	}
 
+	for res.Next() {
+		err = res.Scan(&hashed_pass_from_db)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hashed_pass_from_db), []byte(pass_to_check)) == nil {
 		validToken, err := GenerateJWT()
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
@@ -253,10 +249,7 @@ func check_password(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
 			Name:  "token",
 			Value: validToken,
-			//Expires:
-
 		})
-		fmt.Printf("cp1")
 		client := &http.Client{}
 		req, _ := http.NewRequest("GET", "http://localhost:8081/", nil)
 		req.Header.Set("Token", validToken)
@@ -264,7 +257,6 @@ func check_password(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Fprint(w, "Errors: %s", err.Error())
 		}
-		fmt.Printf("cp2")
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
@@ -273,47 +265,33 @@ func check_password(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(body))
 
 	} else {
-		fmt.Fprintf(w, "not all data in fields pass or login filled")
+		fmt.Fprintf(w, "!!relogin with a right credentials!!")
 	}
-	fmt.Printf("cp3")
+}
+
+//function hashing password (pass) to be used with a register page later
+func to_hash_password(pass string) []byte {
+	password := []byte(pass)
+	cost := 10
+	hash, _ := bcrypt.GenerateFromPassword(password, cost)
+	return hash
 }
 
 func GenerateJWT() (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
-
 	claims := token.Claims.(jwt.MapClaims)
 
 	claims["authorized"] = true
 	claims["user"] = "tosha"
-	claims["exp"] = time.Now().Add(time.Minute * 10).Unix()
+	claims["exp"] = time.Now().Add(time.Minute * 1).Unix()
 
 	tokenString, err := token.SignedString(mySigningKey)
 
 	if err != nil {
-		fmt.Errorf("something wrong in JWT token generation %s", err.Error())
+		fmt.Errorf("fail with JWT token generation %s", err.Error())
 		return "", err
 	}
-
 	return tokenString, nil
-}
-func Welcome(w http.ResponseWriter, r *http.Request) {
-	// c, err := r.Cookie("token")
-
-	// if err != nil {
-	// 	if err == http.ErrNoCookie {
-	// 		// If the cookie is not set, return an unauthorized status
-	// 		w.WriteHeader(http.StatusUnauthorized)
-	// 		return
-	// 	}
-	// 	// For any other type of error, return a bad request status
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	return
-	// }
-
-	// tknStr := c.Value
-	fmt.Println("secret info from welcome page")
-	//fmt.Println("tokenstring from coockie", tknStr)
-
 }
 
 func HandleFunc() {
@@ -323,22 +301,19 @@ func HandleFunc() {
 	rtr := mux.NewRouter()
 	rtr.HandleFunc("/", index).Methods("GET")
 	rtr.HandleFunc("/loginn", loginPage)
-	rtr.HandleFunc("/check_password", check_password)
-	//rtr.Handle("/create", checkAuth(create)).Methods("GET")
+	rtr.HandleFunc("/check_password", check_hashed_password)
 	rtr.HandleFunc("/save_article", save_article)
 	rtr.HandleFunc("/post/{id:[0-9]+}", show_post).Methods("GET")
-	rtr.Handle("/welcome", checkAuthviaCookie(Welcome))
-	rtr.HandleFunc("/welcome", Welcome)
 	rtr.Handle("/create", checkAuthviaCookie(create)).Methods("GET")
 
-	//указывем что обработка всх адресов будет через горилла роутер
+	//routing via Gorilla router
 	http.Handle("/", rtr)
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 
 	http.ListenAndServe(":8081", nil)
-	//log.Fatal(http.ListenAndServe(":"+port, nil))   //for remote server
 
+	//log.Fatal(http.ListenAndServe(":"+port, nil))   //for remote server
 }
 
 func main() {
